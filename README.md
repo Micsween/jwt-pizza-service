@@ -76,3 +76,5 @@ docker compose up -d
 ```
 
 the `-v` flag stands for volumes. This tells docker to take out the volume that is storing the database info as well.
+
+http://localhost:3000
