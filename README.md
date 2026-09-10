@@ -11,23 +11,23 @@ JWTs are used for authentication objects.
 In order for the server to work correctly it must be configured by providing a `config.js` file.
 
 ```js
-module.exports =  {
-    // Your JWT secret can be any random string you would like. It just needs to be secret.
-   jwtSecret: 'yourjwtsecrethere',
-   db: {
-   connection: {
-      host: '127.0.0.1',
-      user: 'root',
-      password: 'yourpasswordhere',
-      database: 'pizza',
+module.exports = {
+  // Your JWT secret can be any random string you would like. It just needs to be secret.
+  jwtSecret: "yourjwtsecrethere",
+  db: {
+    connection: {
+      host: "127.0.0.1",
+      user: "root",
+      password: "yourpasswordhere",
+      database: "pizza",
       connectTimeout: 60000,
-   },
-   listPerPage: 10,
-   },
-   factory: {
-   url: 'https://pizza-factory.cs329.click',
-   apiKey: 'yourapikeyhere',
-   },
+    },
+    listPerPage: 10,
+  },
+  factory: {
+    url: "https://pizza-factory.cs329.click",
+    apiKey: "yourapikeyhere",
+  },
 };
 ```
 
@@ -52,3 +52,27 @@ Nodemon is assumed to be installed globally so that you can have hot reloading w
 ```sh
 npm -g install nodemon
 ```
+
+## Starting up the container:
+
+docker: the docker command
+up: builds the image if it needs to and then starts the container
+-d: runs it in detached mode (in the background) so I can still use the terminal.
+
+```sh
+docker compose up -d
+```
+
+## Taking it down:
+
+```sh
+   docker compose down
+```
+
+## Cleaning it up:
+
+```sh
+   docker compose down -v
+```
+
+the `-v` flag stands for volumes. This tells docker to take out the volume that is storing the database info as well.
