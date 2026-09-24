@@ -6,8 +6,14 @@ const testUser = { name: "pizza diner", email: "reg@test.com", password: "a" };
 const testAdmin = { name: "admin", email: "admin@test.com", password: "admin" };
 let testUserAuthToken;
 let testAdminAuthToken;
+const crustyPizza = {
+  title: "Crusty",
+  description: "A dry mouthed favorite",
+  image: "pizza4.png",
+  price: 0.0028,
+};
+let crustyId;
 
-// Safety guard: never let these tests write to a non-local database.
 const dbHost = config.db.connection.host;
 if (!["127.0.0.1", "localhost"].includes(dbHost)) {
   throw new Error(
@@ -15,9 +21,6 @@ if (!["127.0.0.1", "localhost"].includes(dbHost)) {
   );
   //claude recommended this and I actually think its a great idea
 }
-
-// Undo any DB mocks after each test so they can't leak into other tests
-afterEach(() => jest.restoreAllMocks());
 
 beforeAll(async () => {
   testUser.email = Math.random().toString(36).substring(2, 12) + "@test.com";
@@ -28,6 +31,13 @@ beforeAll(async () => {
   await DB.addUser({ ...testAdmin, roles: [{ role: Role.Admin }] }); //add the admin to the database :D
   const adminRes = await request(app).put("/api/auth").send(testAdmin); //log in as the admin
   testAdminAuthToken = adminRes.body.token;
+
+  const addedCrusty = await DB.addMenuItem(crustyPizza);
+  crustyId = addedCrusty.id;
+});
+
+afterAll(async () => {
+  await DB.removeMenuItem({ id: crustyId });
 });
 
 test("login", async () => {
@@ -49,13 +59,7 @@ test("get menu as a registered user", async () => {
   expect(menuRes.status).toBe(200);
   expect(menuRes.body).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({
-        id: expect.any(Number),
-        title: "Crusty",
-        description: "A dry mouthed favorite",
-        image: "pizza4.png",
-        price: 0.0028,
-      }),
+      expect.objectContaining({ ...crustyPizza, id: crustyId }),
     ]),
   );
 });
