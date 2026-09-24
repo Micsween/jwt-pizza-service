@@ -33,6 +33,20 @@ class DB {
     }
   }
 
+  async removeMenuItem(item) {
+    const connection = await this.getConnection();
+    try {
+      const result = await this.query(
+        connection,
+        `DELETE FROM menu WHERE id=?`,
+        [item.id],
+      );
+      return { ok: result.affectedRows > 0 };
+    } finally {
+      connection.end();
+    }
+  }
+
   async addUser(user) {
     const connection = await this.getConnection();
     try {

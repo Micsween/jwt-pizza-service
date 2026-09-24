@@ -92,10 +92,29 @@ orderRouter.put(
     if (!req.user.isRole(Role.Admin)) {
       throw new StatusCodeError("unable to add menu item", 403);
     }
-
     const addMenuItemReq = req.body;
     await DB.addMenuItem(addMenuItemReq);
     res.send(await DB.getMenu());
+  }),
+);
+
+orderRouter.delete(
+  "/menu",
+  authRouter.authenticateToken,
+  asyncHandler(async (req, res) => {
+    if (!req.user.isRole(Role.Admin)) {
+      throw new StatusCodeError("unable to remove menu item", 403);
+    }
+
+    const menuItemReq = req.body;
+    const r = await DB.removeMenuItem(menuItemReq);
+    if (r.ok) {
+      res.send(await DB.getMenu());
+    } else {
+      res.status(404).send({
+        message: "unable to remove menu item",
+      });
+    }
   }),
 );
 
@@ -130,12 +149,10 @@ orderRouter.post(
     if (r.ok) {
       res.send({ order, followLinkToEndChaos: j.reportUrl, jwt: j.jwt });
     } else {
-      res
-        .status(500)
-        .send({
-          message: "Failed to fulfill order at factory",
-          followLinkToEndChaos: j.reportUrl,
-        });
+      res.status(500).send({
+        message: "Failed to fulfill order at factory",
+        followLinkToEndChaos: j.reportUrl,
+      });
     }
   }),
 );

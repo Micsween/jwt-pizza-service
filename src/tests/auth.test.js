@@ -1,17 +1,33 @@
 const request = require("supertest");
 const app = require("../service");
-//const { DB } = require("../database/database.js");
+const { DB, Role } = require("../database/database.js");
+const config = require("../config.js");
 const testUser = { name: "pizza diner", email: "reg@test.com", password: "a" };
+const testAdmin = { name: "admin", email: "admin@test.com", password: "admin" };
 let testUserAuthToken;
+let testAdminAuthToken;
 
-afterAll(() => jest.restoreAllMocks());
+// Safety guard: never let these tests write to a non-local database.
+const dbHost = config.db.connection.host;
+if (!["127.0.0.1", "localhost"].includes(dbHost)) {
+  throw new Error(
+    `Refusing to run tests against non-local database host: ${dbHost}`,
+  );
+  //claude recommended this and I actually think its a great idea
+}
+
+// Undo any DB mocks after each test so they can't leak into other tests
+afterEach(() => jest.restoreAllMocks());
 
 beforeAll(async () => {
   testUser.email = Math.random().toString(36).substring(2, 12) + "@test.com";
   const registerRes = await request(app).post("/api/auth").send(testUser);
   testUserAuthToken = registerRes.body.token;
-  //    method: "PUT",
-  //  path: "/api/order/menu",
+
+  testAdmin.email = Math.random().toString(36).substring(2, 12) + "@admin.com";
+  await DB.addUser({ ...testAdmin, roles: [{ role: Role.Admin }] }); //add the admin to the database :D
+  const adminRes = await request(app).put("/api/auth").send(testAdmin); //log in as the admin
+  testAdminAuthToken = adminRes.body.token;
 });
 
 test("login", async () => {
@@ -43,6 +59,43 @@ test("get menu as a registered user", async () => {
     ]),
   );
 });
+//happy path 200
+test("add and delete a pizza as an admin", async () => {
+  const newPizza = {
+    title: "Test Pizza " + Math.random().toString(36).substring(2, 8),
+    description:
+      "An elusive pizza, that only appears in dreams. (Or a test database)",
+    image: "pizza9.png",
+    price: 0.000042,
+  };
+  const addSpy = jest.spyOn(DB, "addMenuItem");
+
+  // Add the pizza
+  const pizzaRes = await request(app)
+    .put("/api/order/menu")
+    .set("Authorization", `Bearer ${testAdminAuthToken}`)
+    .send(newPizza);
+
+  expect(pizzaRes.status).toBe(200);
+  expect(addSpy).toHaveBeenCalledWith(newPizza);
+
+  // The route returns the whole menu, so find our pizza by its unique title
+  const addedPizza = pizzaRes.body.find((p) => p.title === newPizza.title);
+  expect(addedPizza).toMatchObject({ ...newPizza, id: expect.any(Number) });
+
+  // Delete the pizza
+  const deleteRes = await request(app)
+    .delete("/api/order/menu")
+    .set("Authorization", `Bearer ${testAdminAuthToken}`)
+    .send({ id: addedPizza.id });
+
+  //basically expect the pizza we added to NOT be in the menu.
+  expect(deleteRes.status).toBe(200);
+  expect(deleteRes.body).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: addedPizza.id })]),
+  );
+});
+//bad path 403
 
 // //fix this
 // test("order a pizza with a registered user", async () => {
