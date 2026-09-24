@@ -1,25 +1,17 @@
 const request = require("supertest");
 const app = require("../service");
-const { DB } = require("../database/database.js");
+//const { DB } = require("../database/database.js");
 const testUser = { name: "pizza diner", email: "reg@test.com", password: "a" };
 let testUserAuthToken;
 
-afterEach(() => jest.restoreAllMocks());
+afterAll(() => jest.restoreAllMocks());
 
 beforeAll(async () => {
   testUser.email = Math.random().toString(36).substring(2, 12) + "@test.com";
   const registerRes = await request(app).post("/api/auth").send(testUser);
   testUserAuthToken = registerRes.body.token;
-  const fakeMenu = [
-    {
-      id: 1,
-      title: "Crusty",
-      description: "A dry mouthed favorite",
-      image: "pizza4.png",
-      price: 0.0028,
-    },
-  ];
-  jest.spyOn(DB, "getMenu").mockResolvedValue(fakeMenu);
+  //    method: "PUT",
+  //  path: "/api/order/menu",
 });
 
 test("login", async () => {
