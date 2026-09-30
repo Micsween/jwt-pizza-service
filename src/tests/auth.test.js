@@ -100,6 +100,25 @@ test("add and delete a pizza as an admin", async () => {
   );
 });
 //bad path 403
+test("delete a pizza as a non-admin user", async () => {
+  const removeSpy = jest.spyOn(DB, "removeMenuItem");
+
+  const deleteRes = await request(app)
+    .delete("/api/order/menu")
+    .set("Authorization", `Bearer ${testUserAuthToken}`)
+    .send({ id: crustyId });
+
+  expect(deleteRes.status).toBe(403);
+  expect(deleteRes.body.message).toBe("unable to remove menu item");
+  // The route should reject before ever touching the database
+  expect(removeSpy).not.toHaveBeenCalled();
+
+  // Crusty should still be on the menu
+  const menuRes = await request(app).get("/api/order/menu");
+  expect(menuRes.body).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: crustyId })]),
+  );
+});
 
 // //fix this
 // test("order a pizza with a registered user", async () => {
