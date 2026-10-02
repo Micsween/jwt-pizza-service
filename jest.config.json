@@ -1,4 +1,5 @@
 {
   "collectCoverage": true,
-  "coverageReporters": ["json-summary", "text"]
+  "coverageReporters": ["json-summary", "text"],
+  "setupFilesAfterEnv": ["<rootDir>/src/tests/setup.js"]
 }

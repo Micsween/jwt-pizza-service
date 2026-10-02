@@ -52,6 +52,43 @@ test("login", async () => {
   expect(loginRes.body.user).toMatchObject(user);
 });
 
+test("buy a pizza as a registered user", async () => {
+  const order = {
+    franchiseId: 1,
+    storeId: 1,
+    items: [
+      {
+        menuId: crustyId,
+        description: crustyPizza.title,
+        price: crustyPizza.price,
+      },
+    ],
+  };
+  //fake factory so our tests don't query the real one
+  const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      jwt: "factory.jwt.token",
+      reportUrl: "http://factory/report",
+    }),
+  });
+
+  const orderRes = await request(app)
+    .post("/api/order")
+    .set("Authorization", `Bearer ${testUserAuthToken}`)
+    .send(order);
+  //not sure if I like that this essentially skips checking the auth token
+  expect(orderRes.status).toBe(200);
+  expect(orderRes.body.order).toMatchObject({
+    ...order,
+    id: expect.any(Number),
+  });
+  expect(orderRes.body.jwt).toBe("factory.jwt.token");
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+  fetchSpy.mockRestore();
+});
+
 test("get menu as a registered user", async () => {
   const menuRes = await request(app)
     .get("/api/order/menu")
@@ -82,6 +119,7 @@ test("add and delete a pizza as an admin", async () => {
 
   expect(pizzaRes.status).toBe(200);
   expect(addSpy).toHaveBeenCalledWith(newPizza);
+  addSpy.mockRestore();
 
   // The route returns the whole menu, so find our pizza by its unique title
   const addedPizza = pizzaRes.body.find((p) => p.title === newPizza.title);
@@ -93,12 +131,34 @@ test("add and delete a pizza as an admin", async () => {
     .set("Authorization", `Bearer ${testAdminAuthToken}`)
     .send({ id: addedPizza.id });
 
-  //basically expect the pizza we added to NOT be in the menu.
+  //basically expect the pizza we added to NOT be in the menu anymore.
   expect(deleteRes.status).toBe(200);
   expect(deleteRes.body).not.toEqual(
     expect.arrayContaining([expect.objectContaining({ id: addedPizza.id })]),
   );
 });
+//bad path for adding a pizza
+test("add a pizza as a non-admin user", async () => {
+  const sneakyPizza = {
+    title: "Sneaky Pizza " + Math.random().toString(36).substring(2, 8),
+    description: "Should never make it onto the menu",
+    image: "pizza9.png",
+    price: 0.0001,
+  };
+  const addSpy = jest.spyOn(DB, "addMenuItem");
+  const addRes = await request(app)
+    .put("/api/order/menu")
+    .set(
+      "Authorization",
+      `Bearer ${Math.random().toString(36).substring(2, 12) + "im a bad token"}`,
+    )
+    .send(sneakyPizza);
+  expect(addRes.status).toBe(401); //unauthenticated
+  expect(addRes.body.message).toBe("unauthorized");
+  expect(addSpy).not.toHaveBeenCalled();
+  addSpy.mockRestore();
+});
+
 //bad path 403
 test("delete a pizza as a non-admin user", async () => {
   const removeSpy = jest.spyOn(DB, "removeMenuItem");
@@ -112,6 +172,7 @@ test("delete a pizza as a non-admin user", async () => {
   expect(deleteRes.body.message).toBe("unable to remove menu item");
   // The route should reject before ever touching the database
   expect(removeSpy).not.toHaveBeenCalled();
+  removeSpy.mockRestore();
 
   // Crusty should still be on the menu
   const menuRes = await request(app).get("/api/order/menu");
@@ -119,23 +180,3 @@ test("delete a pizza as a non-admin user", async () => {
     expect.arrayContaining([expect.objectContaining({ id: crustyId })]),
   );
 });
-
-// //fix this
-// test("order a pizza with a registered user", async () => {
-//   const pizzaRes = await request(app)
-//     .get("/api/order/pizza")
-//     .set("Authorization", `Bearer ${testUserAuthToken}`);
-//   expect(pizzaRes.status).toBe(200);
-//   expect(pizzaRes.body).toEqual();
-// });
-
-// async function createAdminUser() {
-//   let user = { password: "toomanysecrets", roles: [{ role: Role.Admin }] };
-//   user.name = randomName();
-//   user.email = user.name + "@admin.com";
-
-//   await DB.addUser(user);
-//   user.password = "toomanysecrets";
-
-//   return user;
-// }

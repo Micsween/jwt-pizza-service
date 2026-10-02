@@ -3,7 +3,10 @@ import globals from "globals";
 import { defineConfig } from "eslint/config";
 
 export default defineConfig([
-  { files: ["**/*.test.js"], languageOptions: { globals: globals.jest } },
+  {
+    files: ["**/*.test.js", "src/tests/setup.js"],
+    languageOptions: { globals: globals.jest },
+  },
 
   {
     files: ["**/*.{js,mjs,cjs}"],
