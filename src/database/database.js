@@ -21,6 +21,7 @@ class DB {
 
   async addMenuItem(item) {
     const connection = await this.getConnection();
+
     try {
       const addResult = await this.query(
         connection,
