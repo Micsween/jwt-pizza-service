@@ -50,8 +50,9 @@ test("delete user", async () => {
   testUserId = registerRes.body.user.id;
 });
 
-//happy path 200
-test("delete user", async () => {
+//bad path 401
+
+test("delete user unauthenticated", async () => {
   const deleteRes = await request(app)
     .delete(`/api/user/${testUserId}`)
     .set("Authorization", `Bearer ${testAdminAuthToken}imabaddie`);
@@ -72,21 +73,104 @@ test("list users unauthorized", async () => {
   expect(listUsersRes.status).toBe(401);
 });
 
+//happy path list user with name that exists
 test("list users", async () => {
-  const [user, userToken] = await registerUser(request(app));
+  //a random name so the search can only match the user we just registered
+  const uniqueName = randomName();
+  const [user] = await registerUser(uniqueName);
   const listUsersRes = await request(app)
-    .get("/api/user")
-    .set("Authorization", "Bearer " + userToken);
+    .get(`/api/user?page=1&limit=10&name=${uniqueName}`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
   expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users).toEqual([
+    {
+      email: user.email,
+      id: user.id,
+      name: uniqueName,
+      roles: [{ role: Role.Diner }],
+    },
+  ]);
+  expect(listUsersRes.body.more).toBe(false);
+  //delete the user we just made
+  await request(app)
+    .delete(`/api/user/${uniqueName}`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
 });
 
-async function registerUser(service) {
+//happy path default page load
+test("list users paginates at limit and reports more", async () => {
+  //every user shares a random prefix so the wildcard search only matches the users made here
+  const prefix = randomName();
+  const registered = await Promise.all(
+    Array.from({ length: 11 }, (_, i) => registerUser(`${prefix}${i}`)),
+  );
+
+  const listUsersRes = await request(app)
+    .get(`/api/user?page=1&limit=10&name=${prefix}*`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users).toHaveLength(10);
+  expect(listUsersRes.body.more).toBe(true);
+
+  //delete the users we just made
+  for (const [user] of registered) {
+    const deleteRes = await request(app)
+      .delete(`/api/user/${user.id}`)
+      .set("Authorization", `Bearer ${testAdminAuthToken}`);
+    expect(deleteRes.status).toBe(200);
+  }
+});
+
+//happy path but the user doesn't exist
+test("list users returns empty when no name matches", async () => {
+  //a random name that was never registered, so nothing should match it
+  const missingName = randomName();
+  const listUsersRes = await request(app)
+    .get(`/api/user?page=1&limit=10&name=${missingName}`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users).toEqual([]);
+  expect(listUsersRes.body.more).toBe(false);
+});
+
+//bad path 401 with an invalid token
+test("list users as non-admin", async () => {
+  const [user, userToken] = await registerUser(randomName());
+  const listUsersRes = await request(app)
+    .get(`/api/user?page=1&limit=10&name=*`)
+    .set("Authorization", `Bearer ${userToken}imabaddie`);
+
+  expect(listUsersRes.status).toBe(401);
+  expect(listUsersRes.body).toEqual({ message: "unauthorized" });
+
+  const deleteRes = await request(app)
+    .delete(`/api/user/${user.id}`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
+  expect(deleteRes.status).toBe(200);
+});
+//bad path 403 with valid token but not an admin
+test("list users forbidden for non-admin", async () => {
+  const [user, userToken] = await registerUser(randomName());
+  const listUsersRes = await request(app)
+    .get(`/api/user?page=1&limit=10&name=*`)
+    .set("Authorization", `Bearer ${userToken}`);
+
+  expect(listUsersRes.status).toBe(403);
+  expect(listUsersRes.body).toEqual({ message: "unauthorized" });
+
+  const deleteRes = await request(app)
+    .delete(`/api/user/${user.id}`)
+    .set("Authorization", `Bearer ${testAdminAuthToken}`);
+  expect(deleteRes.status).toBe(200);
+});
+
+async function registerUser(name = "pizza diner") {
   const testUser = {
-    name: "pizza diner",
+    name,
     email: `${randomName()}@test.com`,
     password: "a",
   };
-  const registerRes = await service.post("/api/auth").send(testUser);
+  const registerRes = await request(app).post("/api/auth").send(testUser);
   registerRes.body.user.password = testUser.password;
 
   return [registerRes.body.user, registerRes.body.token];

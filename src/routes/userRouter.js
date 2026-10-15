@@ -106,11 +106,22 @@ userRouter.delete(
   }),
 );
 
+//As an admin I can see a list of all users. Each user's name, email, and role is displayed. The list is paginated. The list can be filtered by user name.
+///api/user?page=1&limit=10&name=*
 userRouter.get(
   "/",
   authRouter.authenticateToken,
   asyncHandler(async (req, res) => {
-    res.json({ message: "not implemented", users: [], more: false });
+    const user = req.user;
+    const name = req.query.name;
+    //the assumption here is that there are default page numbers and a user can never ask for page NAN or not ask for a page
+    const page = Number(req.query.page);
+    const limit = Number(req.query.limit);
+    if (!user.isRole(Role.Admin)) {
+      return res.status(403).json({ message: "unauthorized" });
+    }
+    const users_more = await DB.getUsers(page, limit, name);
+    res.json(users_more);
   }),
 );
 

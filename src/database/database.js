@@ -177,6 +177,76 @@ class DB {
     }
     return true;
   }
+  async getFranchises(authUser, page = 0, limit = 10, nameFilter = "*") {
+    const connection = await this.getConnection();
+
+    const offset = page * limit;
+    nameFilter = nameFilter.replace(/\*/g, "%");
+
+    try {
+      let franchises = await this.query(
+        connection,
+        `SELECT id, name FROM franchise WHERE name LIKE ? LIMIT ${limit + 1} OFFSET ${offset}`,
+        [nameFilter],
+      );
+
+      const more = franchises.length > limit;
+      if (more) {
+        franchises = franchises.slice(0, limit);
+      }
+
+      for (const franchise of franchises) {
+        if (authUser?.isRole(Role.Admin)) {
+          await this.getFranchise(franchise);
+        } else {
+          franchise.stores = await this.query(
+            connection,
+            `SELECT id, name FROM store WHERE franchiseId=?`,
+            [franchise.id],
+          );
+        }
+      }
+      return [franchises, more];
+    } finally {
+      connection.end();
+    }
+  }
+  async getUsers(page = 1, limit = 10, nameFilter = "*") {
+    const connection = await this.getConnection();
+
+    const offset = this.getOffset(page, limit);
+    nameFilter = nameFilter.replace(/\*/g, "%");
+
+    try {
+      let users = await this.query(
+        connection,
+        `SELECT id, name, email FROM user WHERE name LIKE ? ORDER BY id LIMIT ${limit + 1} OFFSET ${offset}`,
+        [nameFilter],
+      );
+
+      const more = users.length > limit;
+      if (more) {
+        users = users.slice(0, limit);
+      }
+
+      if (users.length > 0) {
+        const roleResult = await this.query(
+          connection,
+          `SELECT userId, role, objectId FROM userRole WHERE userId IN (${users.map(() => "?").join(", ")})`,
+          users.map((u) => u.id),
+        );
+        for (const user of users) {
+          user.roles = roleResult
+            .filter((r) => r.userId === user.id)
+            .map((r) => ({ objectId: r.objectId || undefined, role: r.role }));
+        }
+      }
+
+      return { users: users, more: more };
+    } finally {
+      connection.end();
+    }
+  }
 
   async loginUser(userId, token) {
     token = this.getTokenSignature(token);
@@ -322,41 +392,6 @@ class DB {
         await connection.rollback();
         throw new StatusCodeError("unable to delete franchise", 500);
       }
-    } finally {
-      connection.end();
-    }
-  }
-
-  async getFranchises(authUser, page = 0, limit = 10, nameFilter = "*") {
-    const connection = await this.getConnection();
-
-    const offset = page * limit;
-    nameFilter = nameFilter.replace(/\*/g, "%");
-
-    try {
-      let franchises = await this.query(
-        connection,
-        `SELECT id, name FROM franchise WHERE name LIKE ? LIMIT ${limit + 1} OFFSET ${offset}`,
-        [nameFilter],
-      );
-
-      const more = franchises.length > limit;
-      if (more) {
-        franchises = franchises.slice(0, limit);
-      }
-
-      for (const franchise of franchises) {
-        if (authUser?.isRole(Role.Admin)) {
-          await this.getFranchise(franchise);
-        } else {
-          franchise.stores = await this.query(
-            connection,
-            `SELECT id, name FROM store WHERE franchiseId=?`,
-            [franchise.id],
-          );
-        }
-      }
-      return [franchises, more];
     } finally {
       connection.end();
     }
