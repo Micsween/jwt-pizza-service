@@ -60,6 +60,13 @@ jobs:
       - name: Tests
         run: npm test
 
+      - name: set version
+        id: set_version
+        run: |
+          version=$(date +'%Y%m%d.%H%M%S')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          printf '{"version": "%s" }' "$version" > src/version.json
+
       - name: Create dist
         run: |
           mkdir dist
@@ -69,13 +76,6 @@ jobs:
           sed -i "s/root/${{ secrets.DB_USERNAME }}/g" dist/config.js
           sed -i "s/tempdbpassword/${{ secrets.DB_PASSWORD }}/g" dist/config.js
           sed -i "s/127.0.0.1/${{ secrets.DB_HOSTNAME }}/g" dist/config.js
-
-      - name: set version
-        id: set_version
-        run: |
-          version=$(date +'%Y%m%d.%H%M%S')
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          printf '{"version": "%s" }' "$version" > src/version.json
 
       - name: Update distribution artifact
         uses: actions/upload-artifact@v4
