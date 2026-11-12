@@ -24,6 +24,19 @@ function authAttempt(success) {
   authAttempts[success ? "success" : "failure"] += 1;
 }
 
+const pizzaStats = { sold: 0, creationFailures: 0, revenue: 0 };
+
+function pizzaPurchase(success, order) {
+  if (!success) {
+    pizzaStats.creationFailures += 1;
+    return;
+  }
+
+  const items = order?.items ?? [];
+  pizzaStats.sold += items.length;
+  pizzaStats.revenue += items.reduce((sum, item) => sum + item.price, 0);
+}
+
 function getCpuUsagePercentage() {
   const cpuUsage = os.loadavg()[0] / os.cpus().length;
   return Number((cpuUsage * 100).toFixed(2));
@@ -69,6 +82,23 @@ setInterval(() => {
       }),
     );
   });
+
+  metrics.push(
+    createMetric("pizzas_sold", pizzaStats.sold, "1", "sum", "asInt", {}),
+  );
+  metrics.push(
+    createMetric(
+      "pizza_creation_failures",
+      pizzaStats.creationFailures,
+      "1",
+      "sum",
+      "asInt",
+      {},
+    ),
+  );
+  metrics.push(
+    createMetric("revenue", pizzaStats.revenue, "1", "sum", "asDouble", {}),
+  );
 
   metrics.push(
     createMetric("cpu", getCpuUsagePercentage(), "%", "gauge", "asDouble", {}),
@@ -158,4 +188,4 @@ function sendMetricToGrafana(metrics) {
     });
 }
 
-module.exports = { requestTracker, authAttempt };
+module.exports = { requestTracker, authAttempt, pizzaPurchase };
