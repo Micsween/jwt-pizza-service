@@ -1,7 +1,6 @@
 const config = require("./config");
 const os = require("os");
 
-// Metrics stored in memory
 const requests = { GET: 0, PUT: 0, POST: 0, DELETE: 0 }; //these should be initialized to 0 so that if theres nothing it's still visible
 // user id -> timestamp (ms) of their most recent request
 const activeUsers = new Map();
@@ -10,12 +9,33 @@ const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 // login attempts by outcome
 const authAttempts = { success: 0, failure: 0 };
 
+// latency samples collected since the last push, in ms.
+// unlike the counters above, these are reset after every push.
+const latency = {
+  request: { totalMs: 0, count: 0 },
+  pizza: { totalMs: 0, count: 0 },
+};
+
+function recordLatency(kind, ms) {
+  latency[kind].totalMs += ms;
+  latency[kind].count += 1;
+}
+
+// call with how long the factory round trip took
+function pizzaLatency(ms) {
+  recordLatency("pizza", ms);
+}
+
 function requestTracker(req, res, next) {
   const endpoint = `${req.method}`;
   requests[endpoint] = (requests[endpoint] || 0) + 1;
   if (req.user != undefined) {
     activeUsers.set(req.user.id, Date.now());
   }
+
+  // "finish" fires once the whole response has been handed off to be sent
+  const start = performance.now();
+  res.on("finish", () => recordLatency("request", performance.now() - start));
 
   next();
 }
@@ -47,8 +67,27 @@ function getMemoryUsagePercentage() {
   return Number(memoryUsed.toFixed(2));
 }
 
+function takeAverageLatency(kind) {
+  const window = latency[kind]; // { totalMs, count }
+  if (window.count == 0) {
+    return null;
+  }
+  const averageMs = window.totalMs / window.count;
+  latency[kind] = { totalMs: 0, count: 0 };
+  return averageMs;
+}
+
 setInterval(() => {
   const metrics = [];
+
+  for (const kind of ["request", "pizza"]) {
+    const avgMs = takeAverageLatency(kind);
+    if (avgMs !== null && avgMs !== undefined) {
+      metrics.push(
+        createMetric(`${kind}_latency`, avgMs, "ms", "gauge", "asDouble", {}),
+      );
+    }
+  }
   let total = 0;
   Object.keys(requests).forEach((endpoint) => {
     metrics.push(
@@ -188,4 +227,4 @@ function sendMetricToGrafana(metrics) {
     });
 }
 
-module.exports = { requestTracker, authAttempt, pizzaPurchase };
+module.exports = { requestTracker, authAttempt, pizzaPurchase, pizzaLatency };

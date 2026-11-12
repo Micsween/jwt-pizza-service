@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function hit(method, user) {
-  requestTracker({ method, user }, {}, () => {});
+  requestTracker({ method, user }, { on: () => {} }, () => {});
 }
 
 // Advance the fake clock to the next push and return the metrics it sent.
@@ -46,7 +46,7 @@ function valueOf(metrics, name, method) {
 
 test("requestTracker calls next", () => {
   const next = jest.fn();
-  requestTracker({ method: "GET" }, {}, next);
+  requestTracker({ method: "GET" }, { on: () => {} }, next);
   expect(next).toHaveBeenCalledTimes(1);
 });
 

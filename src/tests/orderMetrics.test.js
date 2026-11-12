@@ -32,9 +32,11 @@ let fetchSpy;
 
 // Builds a fake fetch. The factory call gets factoryResponse (or throws if it
 // is an Error); anything else (the Grafana push) gets a plain ok.
-function fakeFetch(factoryResponse) {
+// delayMs moves the fake clock forward to pretend the factory took that long.
+function fakeFetch(factoryResponse, delayMs = 0) {
   return async (url) => {
     if (url.startsWith(config.factory.url)) {
+      jest.advanceTimersByTime(delayMs);
       if (factoryResponse instanceof Error) throw factoryResponse;
       return factoryResponse;
     }
@@ -137,4 +139,62 @@ test("successful order counts pizzas and revenue, not a failure", async () => {
   expect(m.sold).toBe(2);
   expect(m.failures).toBe(0);
   expect(m.revenue).toBeCloseTo(0.0542);
+});
+
+// ---- latency ----
+
+const goodFactory = { ok: true, json: async () => ({ reportUrl: "http://fake/report", jwt: "factory-jwt" }) };
+
+// Advance to the next push and return { request, pizza } latency in ms
+// (undefined if that metric wasn't sent this push).
+function latencyMetrics() {
+  jest.advanceTimersByTime(PUSH_INTERVAL_MS);
+  const grafanaCall = fetchSpy.mock.calls.filter(([url]) => !url.startsWith(config.factory.url)).at(-1);
+  const metrics = JSON.parse(grafanaCall[1].body).resourceMetrics[0].scopeMetrics[0].metrics;
+  const value = (name) => metrics.find((m) => m.name === name)?.gauge.dataPoints[0].asDouble;
+  return { request: value("request_latency"), pizza: value("pizza_latency") };
+}
+
+test("pizza latency is the factory round trip time", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 250));
+
+  await placeOrder();
+
+  expect(latencyMetrics().pizza).toBeCloseTo(250);
+});
+
+test("pizza latency is recorded when the factory fails", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(new Error("timeout"), 3000));
+
+  await placeOrder();
+
+  expect(latencyMetrics().pizza).toBeCloseTo(3000);
+});
+
+test("pizza latency averages orders in the same window", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 100));
+  await placeOrder();
+  fetchSpy.mockImplementation(fakeFetch(goodFactory, 300));
+  await placeOrder();
+
+  expect(latencyMetrics().pizza).toBeCloseTo(200);
+});
+
+test("request latency includes waiting on the factory", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 250));
+
+  await placeOrder();
+
+  // the whole request took at least as long as the factory part of it
+  expect(latencyMetrics().request).toBeGreaterThanOrEqual(250);
+});
+
+test("latency resets each window, and nothing is sent for an empty window", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 250));
+
+  await placeOrder();
+  expect(latencyMetrics().pizza).toBeCloseTo(250);
+
+  // no orders in this window -> no pizza_latency at all (not 0, not NaN)
+  expect(latencyMetrics()).toEqual({ request: undefined, pizza: undefined });
 });

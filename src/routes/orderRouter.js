@@ -3,7 +3,7 @@ const config = require("../config.js");
 const { Role, DB } = require("../database/database.js");
 const { authRouter } = require("./authRouter.js");
 const { asyncHandler, StatusCodeError } = require("../endpointHelper.js");
-const { pizzaPurchase } = require("../metrics.js");
+const { pizzaPurchase, pizzaLatency } = require("../metrics.js");
 
 const orderRouter = express.Router();
 
@@ -137,6 +137,7 @@ orderRouter.post(
     const order = await DB.addDinerOrder(req.user, orderReq);
     let r;
     let j;
+    const factoryStart = performance.now();
     try {
       r = await fetch(`${config.factory.url}/api/order`, {
         method: "POST",
@@ -157,6 +158,8 @@ orderRouter.post(
     } catch (e) {
       pizzaPurchase(false);
       throw e;
+    } finally {
+      pizzaLatency(performance.now() - factoryStart);
     }
 
     if (r.ok) {
