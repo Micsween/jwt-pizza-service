@@ -8,15 +8,12 @@ const activeUsers = new Map();
 // a user counts as active if they made a request within this window
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 
-// Middleware to track requests
-//this tracks the number of requests by their type.
-// what needs to be submitted to grafana:
-// the sum of GET, PUT, POST, and DELETE requests.
-// the total number of requests made overall.
+// login attempts by outcome
+const authAttempts = { success: 0, failure: 0 };
+
 function requestTracker(req, res, next) {
   const endpoint = `${req.method}`;
   requests[endpoint] = (requests[endpoint] || 0) + 1;
-  //added functionality to keep track of the last time a user was active
   if (req.user != undefined) {
     activeUsers.set(req.user.id, Date.now());
   }
@@ -24,7 +21,9 @@ function requestTracker(req, res, next) {
   next();
 }
 
-//Periodically send metrics to Grafana.
+function authAttempt(success) {
+  authAttempts[success ? "success" : "failure"] += 1;
+}
 
 setInterval(() => {
   const metrics = [];
@@ -53,6 +52,14 @@ setInterval(() => {
   metrics.push(
     createMetric("active_users", activeUserCount, "1", "gauge", "asInt", {}),
   );
+
+  Object.keys(authAttempts).forEach((status) => {
+    metrics.push(
+      createMetric("auth_attempts", authAttempts[status], "1", "sum", "asInt", {
+        status,
+      }),
+    );
+  });
 
   sendMetricToGrafana(metrics);
 }, 10000).unref();
@@ -128,4 +135,4 @@ function sendMetricToGrafana(metrics) {
     });
 }
 
-module.exports = { requestTracker };
+module.exports = { requestTracker, authAttempt };
