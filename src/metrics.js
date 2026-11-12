@@ -1,13 +1,12 @@
 const config = require("./config");
+const os = require("os");
 
 // Metrics stored in memory
-const requests = { GET: 0, PUT: 0, POST: 0, DELETE: 0 }; //these should be initialized to 0 so that if theres nothing it doesnt break.
-
+const requests = { GET: 0, PUT: 0, POST: 0, DELETE: 0 }; //these should be initialized to 0 so that if theres nothing it's still visible
 // user id -> timestamp (ms) of their most recent request
 const activeUsers = new Map();
 // a user counts as active if they made a request within this window
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
-
 // login attempts by outcome
 const authAttempts = { success: 0, failure: 0 };
 
@@ -23,6 +22,20 @@ function requestTracker(req, res, next) {
 
 function authAttempt(success) {
   authAttempts[success ? "success" : "failure"] += 1;
+}
+
+// CPU usage as a percentage (0-100).
+// loadavg()[0] is the average number of processes waiting for CPU over the last minute.
+// Dividing by the number of cores turns it into "how busy is the machine" as a fraction.
+function getCpuUsagePercentage() {
+  const cpuUsage = os.loadavg()[0] / os.cpus().length;
+  return Number((cpuUsage * 100).toFixed(2));
+}
+
+// Memory usage as a percentage (0-100).
+function getMemoryUsagePercentage() {
+  const memoryUsed = ((os.totalmem() - os.freemem()) / os.totalmem()) * 100;
+  return Number(memoryUsed.toFixed(2));
 }
 
 setInterval(() => {
@@ -60,6 +73,20 @@ setInterval(() => {
       }),
     );
   });
+
+  metrics.push(
+    createMetric("cpu", getCpuUsagePercentage(), "%", "gauge", "asDouble", {}),
+  );
+  metrics.push(
+    createMetric(
+      "memory",
+      getMemoryUsagePercentage(),
+      "%",
+      "gauge",
+      "asDouble",
+      {},
+    ),
+  );
 
   sendMetricToGrafana(metrics);
 }, 10000).unref();
