@@ -24,15 +24,11 @@ function authAttempt(success) {
   authAttempts[success ? "success" : "failure"] += 1;
 }
 
-// CPU usage as a percentage (0-100).
-// loadavg()[0] is the average number of processes waiting for CPU over the last minute.
-// Dividing by the number of cores turns it into "how busy is the machine" as a fraction.
 function getCpuUsagePercentage() {
   const cpuUsage = os.loadavg()[0] / os.cpus().length;
   return Number((cpuUsage * 100).toFixed(2));
 }
 
-// Memory usage as a percentage (0-100).
 function getMemoryUsagePercentage() {
   const memoryUsed = ((os.totalmem() - os.freemem()) / os.totalmem()) * 100;
   return Number(memoryUsed.toFixed(2));
