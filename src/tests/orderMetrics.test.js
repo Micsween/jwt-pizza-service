@@ -64,10 +64,16 @@ function placeOrder() {
     .send(orderReq);
 }
 
+// The most recent fetch sent to the Grafana metrics endpoint. Matching the
+// metrics URL (not just "not the factory") skips the logger's fetch calls.
+function lastMetricsPush() {
+  return fetchSpy.mock.calls.filter(([url]) => url === config.metrics.endpointUrl).at(-1);
+}
+
 // Advance to the next metrics push and return the pizza metrics it sent.
 function pizzaMetrics() {
   jest.advanceTimersByTime(PUSH_INTERVAL_MS);
-  const grafanaCall = fetchSpy.mock.calls.filter(([url]) => !url.startsWith(config.factory.url)).at(-1);
+  const grafanaCall = lastMetricsPush();
   const metrics = JSON.parse(grafanaCall[1].body).resourceMetrics[0].scopeMetrics[0].metrics;
   const value = (name) => {
     const dp = metrics.find((m) => m.name === name).sum.dataPoints[0];
@@ -149,7 +155,7 @@ const goodFactory = { ok: true, json: async () => ({ reportUrl: "http://fake/rep
 // (undefined if that metric wasn't sent this push).
 function latencyMetrics() {
   jest.advanceTimersByTime(PUSH_INTERVAL_MS);
-  const grafanaCall = fetchSpy.mock.calls.filter(([url]) => !url.startsWith(config.factory.url)).at(-1);
+  const grafanaCall = lastMetricsPush();
   const metrics = JSON.parse(grafanaCall[1].body).resourceMetrics[0].scopeMetrics[0].metrics;
   const value = (name) => metrics.find((m) => m.name === name)?.gauge.dataPoints[0].asDouble;
   return { request: value("request_latency"), pizza: value("pizza_latency") };
@@ -197,4 +203,40 @@ test("latency resets each window, and nothing is sent for an empty window", asyn
 
   // no orders in this window -> no pizza_latency at all (not 0, not NaN)
   expect(latencyMetrics()).toEqual({ request: undefined, pizza: undefined });
+});
+
+// ---- too many pizzas ----
+
+function placeOrderOf(pizzaCount) {
+  const items = Array.from({ length: pizzaCount }, () => ({ menuId: 1, description: "Veggie", price: 0.05 }));
+  return request(app)
+    .post("/api/order")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ franchiseId: 1, storeId: 1, items });
+}
+
+const factoryCalls = () => fetchSpy.mock.calls.filter(([url]) => url.startsWith(config.factory.url));
+
+test("order over the limit is refused like a factory failure, without calling the factory", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 250));
+
+  const res = await placeOrderOf(21);
+
+  expect(res.status).toBe(500);
+  expect(res.body.message).toBe("Failed to fulfill order at factory");
+  expect(factoryCalls()).toHaveLength(0);
+  expect(pizzaMetrics()).toEqual({ sold: 0, failures: 1, revenue: 0 });
+  // no factory round trip, so nothing is added to pizza latency
+  const lastPush = JSON.parse(lastMetricsPush()[1].body).resourceMetrics[0].scopeMetrics[0].metrics;
+  expect(lastPush.find((m) => m.name === "pizza_latency")).toBeUndefined();
+});
+
+test("order exactly at the limit still goes to the factory", async () => {
+  fetchSpy = jest.spyOn(global, "fetch").mockImplementation(fakeFetch(goodFactory, 250));
+
+  const res = await placeOrderOf(20);
+
+  expect(res.status).toBe(200);
+  expect(factoryCalls()).toHaveLength(1);
+  expect(pizzaMetrics()).toMatchObject({ sold: 20, failures: 0 });
 });

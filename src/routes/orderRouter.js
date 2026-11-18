@@ -7,6 +7,11 @@ const { pizzaPurchase, pizzaLatency } = require("../metrics.js");
 
 const orderRouter = express.Router();
 
+// The factory fails orders bigger than this, but only after a long delay.
+// We refuse them up front instead of waiting on the factory.
+// TODO: confirm this number against the class instructions.
+const MAX_PIZZAS_PER_ORDER = 20;
+
 orderRouter.docs = [
   {
     method: "GET",
@@ -135,6 +140,17 @@ orderRouter.post(
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
     const order = await DB.addDinerOrder(req.user, orderReq);
+
+    // Too many pizzas: respond exactly like a factory failure, without
+    // calling the factory. Counts as a creation failure, but not toward
+    // pizza latency, since no factory round trip happened.
+    if ((order.items?.length ?? 0) > MAX_PIZZAS_PER_ORDER) {
+      pizzaPurchase(false);
+      return res
+        .status(500)
+        .send({ message: "Failed to fulfill order at factory" });
+    }
+
     let r;
     let j;
     const factoryStart = performance.now();
