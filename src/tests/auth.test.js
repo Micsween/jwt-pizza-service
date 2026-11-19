@@ -84,7 +84,11 @@ test("buy a pizza as a registered user", async () => {
     id: expect.any(Number),
   });
   expect(orderRes.body.jwt).toBe("factory.jwt.token");
-  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  // the logger also calls fetch, so only count calls to the factory
+  const factoryCalls = fetchSpy.mock.calls.filter(([url]) =>
+    url.startsWith(config.factory.url),
+  );
+  expect(factoryCalls).toHaveLength(1);
 
   fetchSpy.mockRestore();
 });
