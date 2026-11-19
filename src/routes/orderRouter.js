@@ -4,6 +4,7 @@ const { Role, DB } = require("../database/database.js");
 const { authRouter } = require("./authRouter.js");
 const { asyncHandler, StatusCodeError } = require("../endpointHelper.js");
 const { pizzaPurchase, pizzaLatency } = require("../metrics.js");
+const logger = require("../logs.js");
 
 const orderRouter = express.Router();
 
@@ -151,6 +152,10 @@ orderRouter.post(
         .send({ message: "Failed to fulfill order at factory" });
     }
 
+    const factoryReq = {
+      diner: { id: req.user.id, name: req.user.name, email: req.user.email },
+      order,
+    };
     let r;
     let j;
     const factoryStart = performance.now();
@@ -161,17 +166,12 @@ orderRouter.post(
           "Content-Type": "application/json",
           authorization: `Bearer ${config.factory.apiKey}`,
         },
-        body: JSON.stringify({
-          diner: {
-            id: req.user.id,
-            name: req.user.name,
-            email: req.user.email,
-          },
-          order,
-        }),
+        body: JSON.stringify(factoryReq),
       });
       j = await r.json();
+      logger.factoryLogger({ reqBody: factoryReq, resBody: j, statusCode: r.status });
     } catch (e) {
+      logger.factoryLogger({ reqBody: factoryReq, statusCode: r?.status, error: e.message });
       pizzaPurchase(false);
       throw e;
     } finally {
